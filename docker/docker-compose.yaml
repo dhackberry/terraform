@@ -1,0 +1,13 @@
+version: '3'
+services:
+  tf-azcli:
+    container_name: tf-azcli
+    image: tf-azcli
+    build: .
+    volumes:
+      - ${HOME}/.ssh:/root/.ssh
+      - ${HOME}/.azure:/root/.azure
+      - ${HOME}/Workspace/terraform/:/terraform
+    working_dir: /terraform
+    entrypoint: ash
+    tty: true
