@@ -1,0 +1,39 @@
+az login
+
+az extension add --name containerapp --upgrade
+az provider register --namespace Microsoft.App
+az provider register --namespace Microsoft.OperationalInsights
+
+RESOURCE_GROUP="rg-code-server"
+CONTAINERAPPS_ENVIRONMENT="codeserver-environment"
+LOCATION="japaneast"
+VNET_NAME="vnet-code-server"
+GITHUB_USERNAME="h4ckberry"
+ACR_NAME="acrenk"
+APP_NAME="aca-code-server"
+PORT=3080
+ACR_PASS="xxxx"
+
+az group create -n $RESOURCE_GROUP -l $LOCATION
+
+az network vnet create -g $RESOURCE_GROUP -n $VNET_NAME -l $LOCATION --address-prefix 10.0.0.0/16
+az network vnet subnet create -g $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-code-server --address-prefixes 10.0.0.0/23
+
+az network public-ip create -n pip-code-server -g $RESOURCE_GROUP --sku standard --zone 1 --allocation static
+az network nat gateway create -g $RESOURCE_GROUP -n nat-code-server --public-ip-addresses pip-code-server --idle-timeout 10
+az network vnet subnet update -g $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-code-server --nat-gateway nat-code-server
+
+INFRASTRUCTURE_SUBNET=$(az network vnet subnet show -g $RESOURCE_GROUP --vnet-name $VNET_NAME -n snet-code-server --query "id" -o tsv)
+# Azure PortalからMicrosoft.App/environmentsの権限委任を実施
+az containerapp env create -n $CONTAINERAPPS_ENVIRONMENT -g $RESOURCE_GROUP -l $LOCATION --infrastructure-subnet-resource-id $INFRASTRUCTURE_SUBNET --logs-workspace-id
+
+az containerapp create -n $APP_NAME -g $RESOURCE_GROUP -l $LOCATION --environment $CONTAINERAPPS_ENVIRONMENT --ingress external
+
+# 単純にアプリデプロイ
+az containerapp up --name $APP_NAME -g $RESOURCE_GROUP -l $LOCATION --environment $CONTAINERAPPS_ENVIRONMENT --context-path . --repo $GITHUB_USERNAME/code-server --ingress external --target-port $PORT --branch main --registry-server $ACR_NAME.azurecr.io --registry-username $ACR_NAME --registry-password $ACR_PASS --env-vars PORT=$PORT
+
+az containerapp github-action add -g $RESOURCE_GROUP --name $APP_NAME --repo-url https://github.com/h4ckberry/code-server.git --branch main --registry-url acrenk.azurecr.io --login-with-github
+
+# IPアドレス追加
+IPADDRESS=xx.xx.xx.xx
+az containerapp ingress access-restriction set -n $APP_NAME -g $RESOURCE_GROUP --rule-name ruleHOGE --ip-address $IPADDRESS/32 --description "Restriction description." --action Allow
